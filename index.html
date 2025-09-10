@@ -2,169 +2,136 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>WebRTC Call + Chat</title>
+  <title>Video Chat + Switch Camera</title>
   <style>
-    body { font-family: Arial, sans-serif; background:#1e1e1e; color:white; text-align:center; padding:20px;}
-    video { width:45%; background:black; border-radius:12px; margin:5px;}
-    #chat { margin-top:20px; background:#2a2a2a; border-radius:12px; padding:10px; max-width:500px; margin-left:auto; margin-right:auto;}
-    #messages { height:200px; overflow-y:auto; text-align:left; border:1px solid #444; padding:5px; margin-bottom:10px; background:#111;}
-    input,button { padding:8px; border-radius:8px; border:none; margin:3px;}
-    input { width:70%;}
-    button { cursor:pointer; background:#3b82f6; color:white; font-weight:bold;}
-    button:hover { background:#2563eb;}
+    body { font-family: Arial, sans-serif; background: #111; color: #eee; text-align: center; }
+    #videos { display: flex; justify-content: center; gap: 10px; margin: 20px; }
+    video { width: 45%; background: #000; border-radius: 10px; }
+    #chat { width: 80%; max-width: 500px; margin: 20px auto; background: #222; padding: 10px; border-radius: 10px; }
+    #messages { height: 200px; overflow-y: auto; text-align: left; margin-bottom: 10px; }
+    input, button { padding: 10px; margin: 5px; border-radius: 5px; border: none; }
+    button { background: #0a84ff; color: #fff; cursor: pointer; }
+    button:hover { background: #006edc; }
   </style>
 </head>
 <body>
-  <h2>📹 WebRTC Call + Chat</h2>
-  <video id="localVideo" autoplay muted playsinline></video>
-  <video id="remoteVideo" autoplay playsinline></video>
+  <h2>📹 Video Chat</h2>
 
-  <div style="margin-top:10px;">
-    <input id="roomInput" placeholder="Room Code">
-    <button onclick="createRoom()">Start Call</button>
-    <button onclick="joinRoom()">Join Call</button>
-    <button onclick="endCall()">End</button>
-    <button onclick="switchCamera()">Switch Camera</button>
-    <button onclick="toggleAudio()">Mute Audio</button>
-    <button onclick="toggleVideo()">Mute Video</button>
+  <div id="videos">
+    <video id="localVideo" autoplay playsinline muted></video>
+    <video id="remoteVideo" autoplay playsinline></video>
+  </div>
+
+  <div>
+    <input type="text" id="roomInput" placeholder="Room Code">
+    <button onclick="createRoom()">Create Room</button>
+    <button onclick="joinRoom()">Join Room</button>
+    <button onclick="switchToFront()">Front Camera</button>
+    <button onclick="switchToBack()">Back Camera</button>
   </div>
 
   <div id="chat">
-    <h3>💬 Chat</h3>
     <div id="messages"></div>
-    <input id="chatInput" placeholder="Type message...">
+    <input type="text" id="chatInput" placeholder="Type a message...">
     <button onclick="sendMessage()">Send</button>
   </div>
 
-<script>
-  // Konfigurasi
-  const SIGNALING_SERVER = "wss://signaling.openwebrtc.org"; 
-  const peerConfig = { iceServers:[{urls:"stun:stun.l.google.com:19302"}] };
+  <script>
+    let localStream, peerConnection, dataChannel;
+    let ws, roomCode;
+    const playerName = "Player" + Math.floor(Math.random() * 1000);
 
-  let peer, dataChannel, localStream, roomCode;
-  let myName = "Player-" + Math.random().toString(36).substring(2,6).toUpperCase();
-  let currentCamera = "user"; // depan
-  let audioEnabled = true;
-  let videoEnabled = true;
+    const servers = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
 
-  const socket = new WebSocket(SIGNALING_SERVER);
-  socket.onopen = ()=> console.log("✅ Connected to signaling server");
-  socket.onmessage = async (msg)=>{
-    const data = JSON.parse(msg.data);
-    if(data.room !== roomCode) return;
-
-    if(data.type==="offer"){
-      await peer.setRemoteDescription(new RTCSessionDescription(data.offer));
-      const answer = await peer.createAnswer();
-      await peer.setLocalDescription(answer);
-      send({type:"answer", answer});
-    }else if(data.type==="answer"){
-      await peer.setRemoteDescription(new RTCSessionDescription(data.answer));
-    }else if(data.type==="candidate"){
-      try{ await peer.addIceCandidate(new RTCIceCandidate(data.candidate)); }catch(e){console.error(e);}
+    // 📹 Start default camera (front)
+    async function startCamera(deviceId=null){
+      if(localStream){ localStream.getTracks().forEach(t=>t.stop()); }
+      let constraints = { audio:true, video: deviceId ? { deviceId: { exact: deviceId } } : { facingMode: "user" } };
+      localStream = await navigator.mediaDevices.getUserMedia(constraints);
+      document.getElementById("localVideo").srcObject = localStream;
+      if(peerConnection){
+        const sender = peerConnection.getSenders().find(s=>s.track.kind==="video");
+        if(sender) sender.replaceTrack(localStream.getVideoTracks()[0]);
+      }
     }
-  };
 
-  function send(data){ data.room=roomCode; socket.send(JSON.stringify(data)); }
+    // 🔄 Switch to front camera
+    async function switchToFront(){
+      await startCamera(null); // default user-facing
+      addMessage("✅ Front Camera", "System");
+    }
 
-  async function initPeer(isCaller){
-    peer = new RTCPeerConnection(peerConfig);
-    await startStream();
+    // 🔄 Switch to back camera
+    async function switchToBack(){
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const backCam = devices.find(d => d.kind==="videoinput" && d.label.toLowerCase().includes("back"));
+      if(backCam){ await startCamera(backCam.deviceId); addMessage("✅ Back Camera", "System"); }
+      else { addMessage("❌ Back camera not found", "System"); }
+    }
 
-    peer.ontrack = e=> document.getElementById("remoteVideo").srcObject = e.streams[0];
-    peer.onicecandidate = e=> { if(e.candidate) send({type:"candidate", candidate:e.candidate}); };
+    // 🟢 Create room
+    function createRoom(){
+      roomCode = Math.random().toString(36).substr(2,6).toUpperCase();
+      connectWS();
+      addMessage("Room created: " + roomCode, "System");
+      document.getElementById("roomInput").value = roomCode;
+    }
 
-    if(isCaller){
-      dataChannel = peer.createDataChannel("chat");
-      setupChat();
-      const offer = await peer.createOffer();
-      await peer.setLocalDescription(offer);
-      send({type:"offer", offer});
-    } else {
-      peer.ondatachannel = e=>{
-        dataChannel = e.channel;
-        setupChat();
+    // 🔵 Join room
+    function joinRoom(){
+      roomCode = document.getElementById("roomInput").value.trim();
+      if(!roomCode){ alert("Enter room code"); return; }
+      connectWS();
+    }
+
+    // 🌐 WebSocket signaling
+    function connectWS(){
+      ws = new WebSocket("wss://ws.postman-echo.com/raw");
+      ws.onopen = async ()=>{
+        addMessage("Connected to signaling server","System");
+        ws.send(JSON.stringify({join:roomCode, name:playerName}));
+        await startCamera();
+        makePeer();
+      };
+      ws.onmessage = async (msg)=>{
+        const data = JSON.parse(msg.data);
+        if(data.offer){
+          await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+          const answer = await peerConnection.createAnswer();
+          await peerConnection.setLocalDescription(answer);
+          ws.send(JSON.stringify({answer, room:roomCode}));
+        } else if(data.answer){
+          await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+        } else if(data.candidate){
+          try{ await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate)); }catch(e){}
+        }
       };
     }
-  }
 
-  async function startStream(){
-    if(localStream){ localStream.getTracks().forEach(t=>t.stop()); }
-    localStream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode: currentCamera }, audio:true });
-    document.getElementById("localVideo").srcObject = localStream;
-    localStream.getTracks().forEach(track => peer.addTrack(track, localStream));
-  }
+    // 🤝 Peer connection
+    function makePeer(){
+      peerConnection = new RTCPeerConnection(servers);
+      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+      peerConnection.ontrack = e => { document.getElementById("remoteVideo").srcObject = e.streams[0]; };
+      dataChannel = peerConnection.createDataChannel("chat");
+      dataChannel.onmessage = e => addMessage(e.data);
+      peerConnection.ondatachannel = e => { e.channel.onmessage = ev => addMessage(ev.data); };
+      peerConnection.onicecandidate = e => { if(e.candidate) ws.send(JSON.stringify({candidate:e.candidate, room:roomCode})); };
+      if(document.getElementById("roomInput").value.trim()===roomCode){
+        peerConnection.createOffer().then(o=>{ peerConnection.setLocalDescription(o); ws.send(JSON.stringify({offer:o, room:roomCode})); });
+      }
+    }
 
-  function setupChat(){
-    dataChannel.onopen = ()=> addMessage("Chat connected ✔","System");
-    dataChannel.onmessage = e=>{
-      const packet = JSON.parse(e.data);
-      addMessage(packet.msg, packet.name);
-    };
-  }
-
-  function addMessage(msg, sender="System"){
-    const div=document.createElement("div");
-    div.innerHTML = `<b>[${sender}]</b> ${msg}`;
-    document.getElementById("messages").appendChild(div);
-    document.getElementById("messages").scrollTop=9999;
-  }
-
-  async function createRoom(){
-    roomCode = document.getElementById("roomInput").value || Math.random().toString(36).substring(2,8).toUpperCase();
-    addMessage("Created room: "+roomCode);
-    await initPeer(true);
-  }
-
-  async function joinRoom(){
-    roomCode = document.getElementById("roomInput").value;
-    if(!roomCode) return alert("Enter room code");
-    addMessage("Joining room: "+roomCode);
-    await initPeer(false);
-  }
-
-  function sendMessage(){
-    const msg=document.getElementById("chatInput").value;
-    if(msg && dataChannel && dataChannel.readyState==="open"){
-      const packet={name:myName,msg};
-      dataChannel.send(JSON.stringify(packet));
-      addMessage(msg,myName);
+    // 💬 Chat
+    function sendMessage(){
+      const text = document.getElementById("chatInput").value;
+      if(!text) return;
+      const msg = playerName + ": " + text;
+      addMessage(msg);
+      if(dataChannel) dataChannel.send(msg);
       document.getElementById("chatInput").value="";
     }
-  }
-
-  function endCall(){
-    if(peer) peer.close();
-    if(localStream) localStream.getTracks().forEach(t=>t.stop());
-    addMessage("Call ended");
-  }
-
-  async function switchCamera(){
-    currentCamera = (currentCamera==="user") ? "environment" : "user";
-    if(!peer) return;
-    const newStream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode: currentCamera }, audio:true });
-    const newVideoTrack = newStream.getVideoTracks()[0];
-    const sender = peer.getSenders().find(s=>s.track.kind==="video");
-    if(sender) sender.replaceTrack(newVideoTrack);
-    document.getElementById("localVideo").srcObject = newStream;
-    localStream.getTracks().forEach(t=>t.stop());
-    localStream = newStream;
-    addMessage("📷 Switched to "+currentCamera+" camera","System");
-  }
-
-  function toggleAudio(){
-    if(!localStream) return;
-    audioEnabled = !audioEnabled;
-    localStream.getAudioTracks().forEach(track => track.enabled = audioEnabled);
-    addMessage(audioEnabled ? "🎤 Mic unmuted" : "🔇 Mic muted", "System");
-  }
-
-  function toggleVideo(){
-    if(!localStream) return;
-    videoEnabled = !videoEnabled;
-    localStream.getVideoTracks().forEach(track => track.enabled = videoEnabled);
-    addMessage(videoEnabled ? "📹 Video on" : "📴 Video off", "System");
-  }
-</script>
+    function addMessage(msg,from=""){ document.getElementById("messages").innerHTML += `<div><b>${from}</b> ${msg}</div>`; }
+  </script>
 </body>
 </html>
