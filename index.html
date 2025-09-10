@@ -1,81 +1,184 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>💀 SYSTEM CORRUPTED</title>
+  <title>WebRTC Call + Chat</title>
   <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      background: black;
-      color: red;
-      font-family: monospace;
+    body {
+      font-family: Arial, sans-serif;
+      background: #1e1e1e;
+      color: white;
       text-align: center;
-      padding-top: 100px;
-      animation: shake 0.05s infinite;
+      padding: 20px;
     }
-
-    h1 {
-      font-size: 48px;
-      text-shadow: 0 0 8px red;
+    video {
+      width: 45%;
+      background: black;
+      border-radius: 12px;
+      margin: 5px;
     }
-
-    @keyframes shake {
-      0% { transform: translate(2px, 1px); }
-      25% { transform: translate(-2px, -2px); }
-      50% { transform: translate(3px, 2px); }
-      75% { transform: translate(-3px, 1px); }
-      100% { transform: translate(0, 0); }
+    #chat {
+      margin-top: 20px;
+      background: #2a2a2a;
+      border-radius: 12px;
+      padding: 10px;
+      max-width: 500px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    #messages {
+      height: 200px;
+      overflow-y: auto;
+      text-align: left;
+      border: 1px solid #444;
+      padding: 5px;
+      margin-bottom: 10px;
+      background: #111;
+    }
+    input, button {
+      padding: 8px;
+      border-radius: 8px;
+      border: none;
+      margin: 3px;
+    }
+    input {
+      width: 70%;
+    }
+    button {
+      cursor: pointer;
+      background: #3b82f6;
+      color: white;
+      font-weight: bold;
+    }
+    button:hover {
+      background: #2563eb;
     }
   </style>
 </head>
 <body>
-  <h1>💀 SYSTEM CORRUPTED!</h1>
-  <p>⚠️ Semua file anda sedang dipindai...</p>
+  <h2>📹 WebRTC Call + Chat</h2>
+  <video id="localVideo" autoplay muted playsinline></video>
+  <video id="remoteVideo" autoplay playsinline></video>
 
-  <script>
-    // Blok tombol kembali
-    history.pushState(null, "", location.href);
-    window.onpopstate = function () {
-      history.pushState(null, "", location.href);
+  <div style="margin-top:10px;">
+    <input id="roomInput" placeholder="Room Code">
+    <button onclick="createRoom()">Start Call</button>
+    <button onclick="joinRoom()">Join Call</button>
+    <button onclick="endCall()">End</button>
+  </div>
+
+  <div id="chat">
+    <h3>💬 Chat</h3>
+    <div id="messages"></div>
+    <input id="chatInput" placeholder="Type message...">
+    <button onclick="sendMessage()">Send</button>
+  </div>
+
+<script>
+  // --------------------------
+  // Konfigurasi
+  // --------------------------
+  const SIGNALING_SERVER = "wss://signaling.openwebrtc.org"; // server publik (kadang penuh)
+  const peerConfig = { iceServers:[{urls:"stun:stun.l.google.com:19302"}] };
+
+  let peer, dataChannel, localStream, roomCode;
+  let myName = "Player-" + Math.random().toString(36).substring(2,6).toUpperCase();
+
+  const socket = new WebSocket(SIGNALING_SERVER);
+  socket.onopen = ()=> console.log("✅ Connected to signaling server");
+  socket.onmessage = async (msg)=>{
+    const data = JSON.parse(msg.data);
+    if(data.room !== roomCode) return;
+
+    if(data.type==="offer"){
+      await peer.setRemoteDescription(new RTCSessionDescription(data.offer));
+      const answer = await peer.createAnswer();
+      await peer.setLocalDescription(answer);
+      send({type:"answer", answer});
+    }else if(data.type==="answer"){
+      await peer.setRemoteDescription(new RTCSessionDescription(data.answer));
+    }else if(data.type==="candidate"){
+      try{ await peer.addIceCandidate(new RTCIceCandidate(data.candidate)); }catch(e){console.error(e);}
+    }
+  };
+
+  function send(data){
+    data.room = roomCode;
+    socket.send(JSON.stringify(data));
+  }
+
+  async function initPeer(isCaller){
+    peer = new RTCPeerConnection(peerConfig);
+    localStream = await navigator.mediaDevices.getUserMedia({video:true,audio:true});
+    document.getElementById("localVideo").srcObject = localStream;
+    localStream.getTracks().forEach(track => peer.addTrack(track, localStream));
+
+    peer.ontrack = e=> document.getElementById("remoteVideo").srcObject = e.streams[0];
+    peer.onicecandidate = e=> { if(e.candidate) send({type:"candidate", candidate:e.candidate}); };
+
+    if(isCaller){
+      dataChannel = peer.createDataChannel("chat");
+      setupChat();
+      const offer = await peer.createOffer();
+      await peer.setLocalDescription(offer);
+      send({type:"offer", offer});
+    } else {
+      peer.ondatachannel = e=>{
+        dataChannel = e.channel;
+        setupChat();
+      };
+    }
+  }
+
+  function setupChat(){
+    dataChannel.onopen = ()=>{
+      console.log("✅ Chat channel opened");
+      addMessage("Chat connected ✔", "System");
     };
+    dataChannel.onmessage = e=>{
+      const packet = JSON.parse(e.data);
+      addMessage(packet.msg, packet.name);
+    };
+    dataChannel.onclose = ()=> console.log("❌ Chat channel closed");
+  }
 
-    // Fullscreen paksa
-    function forceFullScreen() {
-      if (document.documentElement.requestFullscreen) {
-        document.documentElement.requestFullscreen().catch(() => {});
-      }
+  function addMessage(msg, sender="System"){
+    const div = document.createElement("div");
+    div.innerHTML = `<b>[${sender}]</b> ${msg}`;
+    document.getElementById("messages").appendChild(div);
+    document.getElementById("messages").scrollTop = 9999;
+  }
+
+  async function createRoom(){
+    roomCode = document.getElementById("roomInput").value || Math.random().toString(36).substring(2,8).toUpperCase();
+    addMessage("Created room: "+roomCode);
+    await initPeer(true);
+  }
+
+  async function joinRoom(){
+    roomCode = document.getElementById("roomInput").value;
+    if(!roomCode) return alert("Enter room code");
+    addMessage("Joining room: "+roomCode);
+    await initPeer(false);
+  }
+
+  function sendMessage(){
+    const msg = document.getElementById("chatInput").value;
+    if(msg && dataChannel && dataChannel.readyState==="open"){
+      const packet = {name: myName, msg};
+      dataChannel.send(JSON.stringify(packet));
+      addMessage(msg, myName);
+      document.getElementById("chatInput").value="";
+    } else {
+      addMessage("⚠️ Chat not connected yet!", "System");
     }
+  }
 
-    // Spam alert
-    function startAlertSpam() {
-      setTimeout(() => {
-        alert("🚨 SYSTEM FAILURE: Jangan tutup tab ini!");
-        startAlertSpam(); // panggil lagi
-      }, 200);
-    }
-
-    // Super heavy lag
-    function freezeCPU() {
-      while (true) {
-        let x = Math.pow(Math.random() * Date.now(), 10);
-      }
-    }
-
-    // (Optional) Spam tab baru (serem, tapi hati-hati)
-    function openSpamTabs() {
-      for (let i = 0; i < 10; i++) {
-        window.open(window.location.href, "_blank");
-      }
-    }
-
-    // Mulai semuanya
-    setTimeout(() => {
-      forceFullScreen();
-      startAlertSpam();
-      // openSpamTabs(); // Aktifkan ini jika mau spam tab baru
-      freezeCPU(); // freeze browser
-    }, 1000);
-  </script>
+  function endCall(){
+    if(peer) peer.close();
+    if(localStream) localStream.getTracks().forEach(t=>t.stop());
+    addMessage("Call ended");
+  }
+</script>
 </body>
 </html>
