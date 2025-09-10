@@ -2,136 +2,196 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Video Chat + Switch Camera</title>
+  <title>3D Video Call</title>
   <style>
-    body { font-family: Arial, sans-serif; background: #111; color: #eee; text-align: center; }
-    #videos { display: flex; justify-content: center; gap: 10px; margin: 20px; }
-    video { width: 45%; background: #000; border-radius: 10px; }
-    #chat { width: 80%; max-width: 500px; margin: 20px auto; background: #222; padding: 10px; border-radius: 10px; }
-    #messages { height: 200px; overflow-y: auto; text-align: left; margin-bottom: 10px; }
-    input, button { padding: 10px; margin: 5px; border-radius: 5px; border: none; }
-    button { background: #0a84ff; color: #fff; cursor: pointer; }
-    button:hover { background: #006edc; }
+    body {
+      font-family: Arial, sans-serif;
+      background: linear-gradient(135deg, #1a2a6c, #b21f1f, #fdbb2d);
+      margin: 0; padding: 0;
+      display: flex; flex-direction: column; align-items: center;
+      height: 100vh;
+    }
+    header {
+      color: #fff; padding: 1rem;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+    }
+    #roomForm {
+      margin: 10px;
+    }
+    #videos {
+      display: flex; gap: 20px;
+      perspective: 1000px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    video {
+      width: 300px; height: 200px;
+      background: #000; border-radius: 12px;
+      transform: rotateY(10deg);
+      box-shadow: 0 10px 20px rgba(0,0,0,0.6);
+    }
+    #controls {
+      margin: 10px;
+    }
+    button {
+      padding: 8px 14px; margin: 5px;
+      border: none; border-radius: 8px;
+      cursor: pointer;
+      background: #fff3; color: #fff;
+      font-weight: bold;
+      transition: 0.3s;
+    }
+    button:hover {
+      background: #fff9;
+      color: #000;
+    }
+    #chat {
+      position: fixed;
+      bottom: 0; right: 0;
+      width: 300px; height: 300px;
+      display: flex; flex-direction: column;
+      background: rgba(255,255,255,0.9);
+      border-radius: 12px 12px 0 0;
+      overflow: hidden;
+    }
+    #messages {
+      flex: 1; overflow-y: auto;
+      padding: 8px;
+    }
+    #messages div {
+      margin: 4px 0; padding: 6px;
+      background: #eee; border-radius: 6px;
+    }
+    #chat input {
+      border: none; padding: 8px;
+      width: 100%;
+      outline: none;
+    }
   </style>
 </head>
 <body>
-  <h2>📹 Video Chat</h2>
+  <header><h2>🎥 3D Web Video Call</h2></header>
+
+  <form id="roomForm">
+    <input type="text" id="roomInput" placeholder="Masukkan Kode Room" required>
+    <button type="submit">Join</button>
+  </form>
+
+  <div id="controls" style="display:none;">
+    <button id="btnMute">🔇 Mute</button>
+    <button id="btnSwitch">🔄 Switch Camera</button>
+  </div>
 
   <div id="videos">
     <video id="localVideo" autoplay playsinline muted></video>
     <video id="remoteVideo" autoplay playsinline></video>
   </div>
 
-  <div>
-    <input type="text" id="roomInput" placeholder="Room Code">
-    <button onclick="createRoom()">Create Room</button>
-    <button onclick="joinRoom()">Join Room</button>
-    <button onclick="switchToFront()">Front Camera</button>
-    <button onclick="switchToBack()">Back Camera</button>
-  </div>
-
-  <div id="chat">
+  <div id="chat" style="display:none;">
     <div id="messages"></div>
-    <input type="text" id="chatInput" placeholder="Type a message...">
-    <button onclick="sendMessage()">Send</button>
+    <input id="chatInput" placeholder="Ketik pesan...">
   </div>
 
   <script>
-    let localStream, peerConnection, dataChannel;
-    let ws, roomCode;
-    const playerName = "Player" + Math.floor(Math.random() * 1000);
+    const localVideo = document.getElementById("localVideo");
+    const remoteVideo = document.getElementById("remoteVideo");
+    const roomForm = document.getElementById("roomForm");
+    const roomInput = document.getElementById("roomInput");
+    const btnMute = document.getElementById("btnMute");
+    const btnSwitch = document.getElementById("btnSwitch");
+    const controls = document.getElementById("controls");
+    const chatBox = document.getElementById("chat");
+    const chatInput = document.getElementById("chatInput");
+    const messages = document.getElementById("messages");
 
-    const servers = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+    let ws, peerConnection, localStream, currentCam = "user";
+    const config = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+    const username = "User" + Math.floor(Math.random()*1000);
 
-    // 📹 Start default camera (front)
-    async function startCamera(deviceId=null){
-      if(localStream){ localStream.getTracks().forEach(t=>t.stop()); }
-      let constraints = { audio:true, video: deviceId ? { deviceId: { exact: deviceId } } : { facingMode: "user" } };
-      localStream = await navigator.mediaDevices.getUserMedia(constraints);
-      document.getElementById("localVideo").srcObject = localStream;
-      if(peerConnection){
-        const sender = peerConnection.getSenders().find(s=>s.track.kind==="video");
-        if(sender) sender.replaceTrack(localStream.getVideoTracks()[0]);
-      }
+    function addMessage(text, sender="System") {
+      const div = document.createElement("div");
+      div.textContent = sender + ": " + text;
+      messages.appendChild(div);
+      messages.scrollTop = messages.scrollHeight;
     }
 
-    // 🔄 Switch to front camera
-    async function switchToFront(){
-      await startCamera(null); // default user-facing
-      addMessage("✅ Front Camera", "System");
-    }
+    async function startCall(room) {
+      ws = new WebSocket("ws://localhost:8080");
+      peerConnection = new RTCPeerConnection(config);
 
-    // 🔄 Switch to back camera
-    async function switchToBack(){
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const backCam = devices.find(d => d.kind==="videoinput" && d.label.toLowerCase().includes("back"));
-      if(backCam){ await startCamera(backCam.deviceId); addMessage("✅ Back Camera", "System"); }
-      else { addMessage("❌ Back camera not found", "System"); }
-    }
+      localStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: currentCam }, audio: true });
+      localVideo.srcObject = localStream;
+      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
-    // 🟢 Create room
-    function createRoom(){
-      roomCode = Math.random().toString(36).substr(2,6).toUpperCase();
-      connectWS();
-      addMessage("Room created: " + roomCode, "System");
-      document.getElementById("roomInput").value = roomCode;
-    }
-
-    // 🔵 Join room
-    function joinRoom(){
-      roomCode = document.getElementById("roomInput").value.trim();
-      if(!roomCode){ alert("Enter room code"); return; }
-      connectWS();
-    }
-
-    // 🌐 WebSocket signaling
-    function connectWS(){
-      ws = new WebSocket("wss://ws.postman-echo.com/raw");
-      ws.onopen = async ()=>{
-        addMessage("Connected to signaling server","System");
-        ws.send(JSON.stringify({join:roomCode, name:playerName}));
-        await startCamera();
-        makePeer();
+      peerConnection.ontrack = e => remoteVideo.srcObject = e.streams[0];
+      peerConnection.onicecandidate = e => {
+        if (e.candidate) ws.send(JSON.stringify({ type:"candidate", candidate:e.candidate }));
       };
-      ws.onmessage = async (msg)=>{
+
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ type:"join", room }));
+      };
+
+      ws.onmessage = async (msg) => {
         const data = JSON.parse(msg.data);
-        if(data.offer){
+        if (data.type === "offer") {
           await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
           const answer = await peerConnection.createAnswer();
           await peerConnection.setLocalDescription(answer);
-          ws.send(JSON.stringify({answer, room:roomCode}));
-        } else if(data.answer){
+          ws.send(JSON.stringify({ type:"answer", answer }));
+        } else if (data.type === "answer") {
           await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-        } else if(data.candidate){
-          try{ await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate)); }catch(e){}
+        } else if (data.type === "candidate") {
+          await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+        } else if (data.type === "chat") {
+          addMessage(data.message, data.user);
         }
+      };
+
+      const offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ type:"join", room }));
+        ws.send(JSON.stringify({ type:"offer", offer }));
       };
     }
 
-    // 🤝 Peer connection
-    function makePeer(){
-      peerConnection = new RTCPeerConnection(servers);
-      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-      peerConnection.ontrack = e => { document.getElementById("remoteVideo").srcObject = e.streams[0]; };
-      dataChannel = peerConnection.createDataChannel("chat");
-      dataChannel.onmessage = e => addMessage(e.data);
-      peerConnection.ondatachannel = e => { e.channel.onmessage = ev => addMessage(ev.data); };
-      peerConnection.onicecandidate = e => { if(e.candidate) ws.send(JSON.stringify({candidate:e.candidate, room:roomCode})); };
-      if(document.getElementById("roomInput").value.trim()===roomCode){
-        peerConnection.createOffer().then(o=>{ peerConnection.setLocalDescription(o); ws.send(JSON.stringify({offer:o, room:roomCode})); });
-      }
-    }
+    roomForm.onsubmit = (e) => {
+      e.preventDefault();
+      const room = roomInput.value.trim();
+      if (!room) return;
+      startCall(room);
+      controls.style.display = "block";
+      chatBox.style.display = "flex";
+      roomForm.style.display = "none";
+    };
 
-    // 💬 Chat
-    function sendMessage(){
-      const text = document.getElementById("chatInput").value;
-      if(!text) return;
-      const msg = playerName + ": " + text;
-      addMessage(msg);
-      if(dataChannel) dataChannel.send(msg);
-      document.getElementById("chatInput").value="";
-    }
-    function addMessage(msg,from=""){ document.getElementById("messages").innerHTML += `<div><b>${from}</b> ${msg}</div>`; }
+    // tombol mute
+    btnMute.onclick = () => {
+      localStream.getAudioTracks().forEach(track => track.enabled = !track.enabled);
+      btnMute.textContent = localStream.getAudioTracks()[0].enabled ? "🔇 Mute" : "🎤 Unmute";
+    };
+
+    // switch camera
+    btnSwitch.onclick = async () => {
+      currentCam = currentCam === "user" ? "environment" : "user";
+      const newStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: currentCam }, audio: true });
+      const videoTrack = newStream.getVideoTracks()[0];
+      const sender = peerConnection.getSenders().find(s => s.track.kind === "video");
+      sender.replaceTrack(videoTrack);
+      localStream = newStream;
+      localVideo.srcObject = localStream;
+    };
+
+    // chat
+    chatInput.addEventListener("keypress", (e) => {
+      if (e.key === "Enter" && chatInput.value.trim() !== "") {
+        const msg = chatInput.value;
+        ws.send(JSON.stringify({ type:"chat", message: msg, user: username }));
+        addMessage(msg, username);
+        chatInput.value = "";
+      }
+    });
   </script>
 </body>
 </html>
